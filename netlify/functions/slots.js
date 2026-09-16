@@ -33,7 +33,11 @@ const SLOTS = [
 
 exports.handler = async () => {
   try {
-    const store = getStore("dodgecity-signup");
+    const store = getStore({
+  name: "dodgecity-signup",
+  siteID: "70b9fc7f-df97-43cd-a43b-e7ce8dfea2a4",
+  token: process.env.BLOBS_TOKEN,
+});
     const listing = await store.list({ prefix: "booking:" });
     const bookedIds = new Set(
       listing.blobs.map((b) => b.key.replace("booking:", ""))
