@@ -1,62 +1,61 @@
 const { getStore } = require("@netlify/blobs");
 
-const SLOTS = [
-  { id: "s1",  day: "Thursday, Sept 17", time: "12:00 PM" },
-  { id: "s2",  day: "Thursday, Sept 17", time: "12:30 PM" },
-  { id: "s3",  day: "Thursday, Sept 17", time: "1:00 PM" },
-  { id: "s4",  day: "Thursday, Sept 17", time: "1:30 PM" },
-  { id: "s5",  day: "Thursday, Sept 17", time: "2:00 PM" },
-  { id: "s6",  day: "Thursday, Sept 17", time: "2:30 PM" },
-  { id: "s7",  day: "Thursday, Sept 17", time: "3:00 PM" },
-  { id: "s8",  day: "Thursday, Sept 17", time: "3:30 PM" },
-  { id: "s9",  day: "Monday, Sept 21",   time: "6:00 PM" },
-  { id: "s10", day: "Monday, Sept 21",   time: "6:30 PM" },
-  { id: "s11", day: "Monday, Sept 21",   time: "7:00 PM" },
-  { id: "s12", day: "Monday, Sept 21",   time: "7:30 PM" },
-  { id: "s13", day: "Tuesday, Sept 22",  time: "11:30 AM" },
-  { id: "s14", day: "Tuesday, Sept 22",  time: "12:00 PM" },
-  { id: "s15", day: "Tuesday, Sept 22",  time: "12:30 PM" },
-  { id: "s16", day: "Tuesday, Sept 22",  time: "1:00 PM" },
-  { id: "s17", day: "Tuesday, Sept 22",  time: "1:30 PM" },
-  { id: "s18", day: "Tuesday, Sept 22",  time: "2:00 PM" },
-  { id: "s19", day: "Tuesday, Sept 22",  time: "2:30 PM" },
-  { id: "s20", day: "Tuesday, Sept 22",  time: "3:00 PM" },
-  { id: "s21", day: "Tuesday, Sept 22",  time: "3:30 PM" },
-  { id: "s22", day: "Tuesday, Sept 22",  time: "4:00 PM" },
-  { id: "s23", day: "Wednesday, Sept 23", time: "12:00 PM" },
-  { id: "s24", day: "Wednesday, Sept 23", time: "12:30 PM" },
-  { id: "s25", day: "Wednesday, Sept 23", time: "1:00 PM" },
-  { id: "s26", day: "Wednesday, Sept 23", time: "1:30 PM" },
-  { id: "s27", day: "Wednesday, Sept 23", time: "2:00 PM" },
-  { id: "s28", day: "Wednesday, Sept 23", time: "2:30 PM" },
-];
+const VALID_IDS = new Set(Array.from({ length: 28 }, (_, i) => `s${i + 1}`));
 
-exports.handler = async () => {
+exports.handler = async (event) => {
+  if (event.httpMethod !== "POST") {
+    return { statusCode: 405, body: JSON.stringify({ error: "Method not allowed" }) };
+  }
+
+  let data;
+  try {
+    data = JSON.parse(event.body || "{}");
+  } catch {
+    return { statusCode: 400, body: JSON.stringify({ error: "Bad request body" }) };
+  }
+
+  const slotId = String(data.slotId || "");
+  const name = String(data.name || "").trim();
+  const email = String(data.email || "").trim();
+
+  if (!VALID_IDS.has(slotId) || !name || !email || !email.includes("@")) {
+    return { statusCode: 400, body: JSON.stringify({ error: "Missing or invalid fields" }) };
+  }
+
   try {
     const store = getStore({
-  name: "dodgecity-signup",
-  siteID: "70b9fc7f-df97-43cd-a43b-e7ce8dfea2a4",
-  token: process.env.BLOBS_TOKEN,
-});
-    const listing = await store.list({ prefix: "booking:" });
-    const bookedIds = new Set(
-      listing.blobs.map((b) => b.key.replace("booking:", ""))
+      name: "dodgecity-signup",
+      siteID: "70b9fc7f-df97-43cd-a43b-e7ce8dfea2a4",
+      token: process.env.BLOBS_TOKEN,
+    });
+    const key = `booking:${slotId}`;
+
+    const existing = await store.get(key);
+    if (existing) {
+      return {
+        statusCode: 409,
+        body: JSON.stringify({ error: "That time was just taken. Please pick another." }),
+      };
+    }
+
+    const wrote = await store.setJSON(
+      key,
+      { name, email, bookedAt: new Date().toISOString() },
+      { onlyIfNew: true }
     );
 
-    const result = SLOTS.map((s) => ({ ...s, booked: bookedIds.has(s.id) }));
+    if (wrote === false) {
+      return {
+        statusCode: 409,
+        body: JSON.stringify({ error: "That time was just taken. Please pick another." }),
+      };
+    }
 
-    return {
-      statusCode: 200,
-      headers: {
-        "Content-Type": "application/json",
-        "Cache-Control": "no-store",
-      },
-      body: JSON.stringify(result),
-    };
+    return { statusCode: 200, body: JSON.stringify({ success: true }) };
   } catch (err) {
     return {
       statusCode: 500,
-      body: JSON.stringify({ error: "Could not load slots", detail: String(err) }),
+      body: JSON.stringify({ error: "Could not save booking", detail: String(err) }),
     };
   }
 };
